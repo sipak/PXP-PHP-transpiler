@@ -1,7 +1,7 @@
 {
-    "name": "nikic/php-parser",
+    "name": "sipak/pxp-php-transpiler",
     "type": "library",
-    "description": "A PHP parser written in PHP",
+    "description": "A fork of nikic/php-parser extended to transpile custom PHP-like syntax (PXP) to PHP",
     "keywords": [
         "php",
         "parser"
