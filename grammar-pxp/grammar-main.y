@@ -1,5 +1,5 @@
 %pure_parser
-%expect 2
+%expect 0
 
 %right T_THROW
 %left T_INCLUDE T_INCLUDE_ONCE T_EVAL T_REQUIRE T_REQUIRE_ONCE
@@ -21,15 +21,9 @@
 %left T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG T_AMPERSAND_FOLLOWED_BY_VAR_OR_VARARG
 %nonassoc T_IS_EQUAL T_IS_NOT_EQUAL T_IS_IDENTICAL T_IS_NOT_IDENTICAL T_SPACESHIP
 %nonassoc '<' T_IS_SMALLER_OR_EQUAL '>' T_IS_GREATER_OR_EQUAL
-#if PHP7
-%left T_SL T_SR
-%left '+' '-' '.'
-#endif
-#if PHP8
 %left '.'
 %left T_SL T_SR
 %left '+' '-'
-#endif
 %left '*' '/' '%'
 %right '!'
 %nonassoc T_INSTANCEOF
@@ -125,6 +119,12 @@
 %token T_ATTRIBUTE
 %token T_ENUM
 
+%token TX_IN
+%token TX_TAG_OPEN_BEGIN
+%token TX_TAG_CLOSE_BEGIN
+%token TX_TAG_END
+%token TX_TAG_SELF_END
+
 %%
 
 start:
@@ -137,9 +137,8 @@ top_statement_list_ex:
 ;
 
 top_statement_list:
-      top_statement_list_ex
-          { makeZeroLengthNop($nop);
-            if ($nop !== null) { $1[] = $nop; } $$ = $1; }
+      top_statement_list_ex                                 { makeZeroLengthNop($nop);
+                                                              if ($nop !== null) { $1[] = $nop; } $$ = $1; }
 ;
 
 ampersand:
@@ -150,7 +149,7 @@ ampersand:
 reserved_non_modifiers:
       T_INCLUDE | T_INCLUDE_ONCE | T_EVAL | T_REQUIRE | T_REQUIRE_ONCE | T_LOGICAL_OR | T_LOGICAL_XOR | T_LOGICAL_AND
     | T_INSTANCEOF | T_NEW | T_CLONE | T_EXIT | T_IF | T_ELSEIF | T_ELSE | T_ENDIF | T_DO | T_WHILE
-    | T_ENDWHILE | T_FOR | T_ENDFOR | T_FOREACH | T_ENDFOREACH | T_DECLARE | T_ENDDECLARE | T_AS | T_TRY | T_CATCH
+    | T_ENDWHILE | T_FOR | T_ENDFOR | T_FOREACH | T_ENDFOREACH | T_DECLARE | T_ENDDECLARE | T_AS | TX_IN | T_TRY | T_CATCH
     | T_FINALLY | T_THROW | T_USE | T_INSTEADOF | T_GLOBAL | T_VAR | T_UNSET | T_ISSET | T_EMPTY | T_CONTINUE | T_GOTO
     | T_FUNCTION | T_CONST | T_RETURN | T_PRINT | T_YIELD | T_LIST | T_SWITCH | T_ENDSWITCH | T_CASE | T_DEFAULT
     | T_BREAK | T_ARRAY | T_CALLABLE | T_EXTENDS | T_IMPLEMENTS | T_NAMESPACE | T_TRAIT | T_INTERFACE | T_CLASS
@@ -369,17 +368,40 @@ inner_statement:
           { throw new Error('__HALT_COMPILER() can only be used from the outermost scope', attributes()); }
 ;
 
+elseif_list:
+  /* empty */                                               { init(); }
+  | elseif_list elseif                                      { push($1, $2); }
+;
+
+elseif:
+  T_ELSEIF expr '{' inner_statement_list '}'                { $$ = Stmt\ElseIf_[$2, $4]; }
+;
+
+else_single:
+  /* empty */                                               { $$ = null; }
+  | T_ELSE '{' inner_statement_list '}'                     { $$ = Stmt\Else_[$3]; }
+;
+
 non_empty_statement:
-      '{' inner_statement_list '}'                          { $$ = Stmt\Block[$2]; }
-    | T_IF '(' expr ')' blocklike_statement elseif_list else_single
-          { $$ = Stmt\If_[$3, ['stmts' => $5, 'elseifs' => $6, 'else' => $7]]; }
-    | T_IF '(' expr ')' ':' inner_statement_list new_elseif_list new_else_single T_ENDIF ';'
-          { $$ = Stmt\If_[$3, ['stmts' => $6, 'elseifs' => $7, 'else' => $8]]; }
-    | T_WHILE '(' expr ')' while_statement                  { $$ = Stmt\While_[$3, $5]; }
-    | T_DO blocklike_statement T_WHILE '(' expr ')' ';'     { $$ = Stmt\Do_   [$5, $2]; }
-    | T_FOR '(' for_expr ';'  for_expr ';' for_expr ')' for_statement
-          { $$ = Stmt\For_[['init' => $3, 'cond' => $5, 'loop' => $7, 'stmts' => $9]]; }
-    | T_SWITCH '(' expr ')' switch_case_list                { $$ = Stmt\Switch_[$3, $5]; }
+  '{' inner_statement_list '}'                              { $$ = Stmt\Block[$2]; }
+  | T_IF expr '{' inner_statement_list '}' elseif_list else_single
+                                                            { $$ = Stmt\If_[$2, ['stmts' => $4, 'elseifs' => $6, 'else' => $7]]; }
+  | T_WHILE expr '{' inner_statement_list '}'               { $$ = Stmt\While_[$2, $4]; }
+  | T_DO '{' inner_statement_list '}' T_WHILE expr ';'      { $$ = Stmt\Do_   [$6, $3]; }
+  | T_FOR for_expr ';'  for_expr ';' for_expr '{' inner_statement_list '}'
+                                                            { $$ = Stmt\For_[['init' => $2, 'cond' => $4, 'loop' => $6, 'stmts' => $8]]; }
+  | T_SWITCH expr '{' case_list '}'                         { $$ = Stmt\Switch_[$2, $4]; }
+  | T_FOR foreach_variable TX_IN expr '{' inner_statement_list '}'
+                                                            { $$ = Stmt\Foreach_[$4, $2[0], ['keyVar' => null, 'byRef' => $2[1], 'stmts' => $6]]; }
+  | T_FOR expr T_AS foreach_variable '{' inner_statement_list '}'
+                                                            { $$ = Stmt\Foreach_[$2, $4[0], ['keyVar' => null, 'byRef' => $4[1], 'stmts' => $6]]; }
+  | T_FOREACH expr T_AS foreach_variable '{' inner_statement_list '}'
+                                                            { $$ = Stmt\Foreach_[$2, $4[0], ['keyVar' => null, 'byRef' => $4[1], 'stmts' => $6]]; }
+  | T_FOREACH expr T_AS variable T_DOUBLE_ARROW foreach_variable '{' inner_statement_list '}'
+                                                            { $$ = Stmt\Foreach_[$2, $6[0], ['keyVar' => $4, 'byRef' => $6[1], 'stmts' => $8]]; }
+  | T_FOREACH expr error '{' inner_statement_list '}'
+                                                            { $$ = Stmt\Foreach_[$2, new Expr\Error(stackAttributes(#3)), ['stmts' => $5]]; }
+
     | T_BREAK optional_expr semi                            { $$ = Stmt\Break_[$2]; }
     | T_CONTINUE optional_expr semi                         { $$ = Stmt\Continue_[$2]; }
     | T_RETURN optional_expr semi                           { $$ = Stmt\Return_[$2]; }
@@ -392,12 +414,6 @@ non_empty_statement:
     }
     | expr semi                                             { $$ = Stmt\Expression[$1]; }
     | T_UNSET '(' variables_list ')' semi                   { $$ = Stmt\Unset_[$3]; }
-    | T_FOREACH '(' expr T_AS foreach_variable ')' foreach_statement
-          { $$ = Stmt\Foreach_[$3, $5[0], ['keyVar' => null, 'byRef' => $5[1], 'stmts' => $7]]; }
-    | T_FOREACH '(' expr T_AS variable T_DOUBLE_ARROW foreach_variable ')' foreach_statement
-          { $$ = Stmt\Foreach_[$3, $7[0], ['keyVar' => $5, 'byRef' => $7[1], 'stmts' => $9]]; }
-    | T_FOREACH '(' expr error ')' foreach_statement
-          { $$ = Stmt\Foreach_[$3, new Expr\Error(stackAttributes(#4)), ['stmts' => $6]]; }
     | T_DECLARE '(' declare_list ')' declare_statement      { $$ = Stmt\Declare_[$3, $5]; }
     | T_TRY '{' inner_statement_list '}' catches optional_finally
           { $$ = Stmt\TryCatch[$3, $5, $6]; $this->checkTryCatch($$); }
@@ -542,16 +558,6 @@ non_empty_class_name_list:
     | non_empty_class_name_list ',' class_name              { push($1, $3); }
 ;
 
-for_statement:
-      blocklike_statement
-    | ':' inner_statement_list T_ENDFOR ';'                 { $$ = $2; }
-;
-
-foreach_statement:
-      blocklike_statement
-    | ':' inner_statement_list T_ENDFOREACH ';'             { $$ = $2; }
-;
-
 declare_statement:
       non_empty_statement                                   { toBlock($1); }
     | ';'                                                   { $$ = null; }
@@ -571,13 +577,6 @@ declare_list_element:
       identifier_not_reserved '=' expr                      { $$ = Node\DeclareItem[$1, $3]; }
 ;
 
-switch_case_list:
-      '{' case_list '}'                                     { $$ = $2; }
-    | '{' ';' case_list '}'                                 { $$ = $3; }
-    | ':' case_list T_ENDSWITCH ';'                         { $$ = $2; }
-    | ':' ';' case_list T_ENDSWITCH ';'                     { $$ = $3; }
-;
-
 case_list:
       /* empty */                                           { init(); }
     | case_list case                                        { push($1, $2); }
@@ -594,7 +593,8 @@ case_separator:
 ;
 
 match:
-      T_MATCH '(' expr ')' '{' match_arm_list '}'           { $$ = Expr\Match_[$3, $6]; }
+  T_MATCH expr '{' match_arm_list '}'                       { $$ = Expr\Match_[$2, $4]; }
+  | T_MATCH '{' match_arm_list '}'                          { $$ = Expr\Match_[Expr\ConstFetch[Name['true']], $3]; }
 ;
 
 match_arm_list:
@@ -610,41 +610,6 @@ non_empty_match_arm_list:
 match_arm:
       expr_list_allow_comma T_DOUBLE_ARROW expr             { $$ = Node\MatchArm[$1, $3]; }
     | T_DEFAULT optional_comma T_DOUBLE_ARROW expr          { $$ = Node\MatchArm[null, $4]; }
-;
-
-while_statement:
-      blocklike_statement                                   { $$ = $1; }
-    | ':' inner_statement_list T_ENDWHILE ';'               { $$ = $2; }
-;
-
-elseif_list:
-      /* empty */                                           { init(); }
-    | elseif_list elseif                                    { push($1, $2); }
-;
-
-elseif:
-      T_ELSEIF '(' expr ')' blocklike_statement             { $$ = Stmt\ElseIf_[$3, $5]; }
-;
-
-new_elseif_list:
-      /* empty */                                           { init(); }
-    | new_elseif_list new_elseif                            { push($1, $2); }
-;
-
-new_elseif:
-     T_ELSEIF '(' expr ')' ':' inner_statement_list
-         { $$ = Stmt\ElseIf_[$3, $6]; $this->fixupAlternativeElse($$); }
-;
-
-else_single:
-      /* empty */                                           { $$ = null; }
-    | T_ELSE blocklike_statement                            { $$ = Stmt\Else_[$2]; }
-;
-
-new_else_single:
-      /* empty */                                           { $$ = null; }
-    | T_ELSE ':' inner_statement_list
-          { $$ = Stmt\Else_[$3]; $this->fixupAlternativeElse($$); }
 ;
 
 foreach_variable:
@@ -836,11 +801,9 @@ class_statement_list:
 class_statement:
       optional_attributes variable_modifiers optional_type_without_static property_declaration_list semi
           { $$ = new Stmt\Property($2, $4, attributes(), $3, $1); }
-#if PHP8
     | optional_attributes variable_modifiers optional_type_without_static property_declaration_list '{' property_hook_list '}'
           { $$ = new Stmt\Property($2, $4, attributes(), $3, $1, $6);
             $this->checkPropertyHookList($6, #5); }
-#endif
     | optional_attributes method_modifiers T_CONST class_const_list semi
           { $$ = new Stmt\ClassConst($4, $2, attributes(), $1);
             $this->checkClassConst($$, #2); }
@@ -947,9 +910,7 @@ property_hook_list:
 
 optional_property_hook_list:
       /* empty */                                           { $$ = []; }
-#if PHP8
     | '{' property_hook_list '}'                            { $$ = $2; $this->checkPropertyHookList($2, #1); }
-#endif
 ;
 
 property_hook:
@@ -1106,6 +1067,7 @@ expr:
           { $$ = Expr\Closure[['static' => false, 'byRef' => $3, 'params' => $5, 'uses' => $7, 'returnType' => $8, 'stmts' => $9, 'attrGroups' => $1]]; }
     | attributes T_STATIC T_FUNCTION optional_ref '(' parameter_list ')' lexical_vars optional_return_type       block_or_error
           { $$ = Expr\Closure[['static' => true, 'byRef' => $4, 'params' => $6, 'uses' => $8, 'returnType' => $9, 'stmts' => $10, 'attrGroups' => $1]]; }
+    | tag                                                     { $$ = $1; }
 ;
 
 anonymous_class:
@@ -1281,9 +1243,6 @@ callable_expr:
 callable_variable:
       simple_variable
     | array_object_dereferenceable '[' optional_expr ']'     { $$ = Expr\ArrayDimFetch[$1, $3]; }
-#if PHP7
-    | array_object_dereferenceable '{' expr '}'              { $$ = Expr\ArrayDimFetch[$1, $3]; }
-#endif
     | function_call
     | array_object_dereferenceable T_OBJECT_OPERATOR property_name argument_list
           { $$ = Expr\MethodCall[$1, $3, $4]; }
@@ -1325,9 +1284,6 @@ static_member:
 new_variable:
       simple_variable
     | new_variable '[' optional_expr ']'                    { $$ = Expr\ArrayDimFetch[$1, $3]; }
-#if PHP7
-    | new_variable '{' expr '}'                             { $$ = Expr\ArrayDimFetch[$1, $3]; }
-#endif
     | new_variable T_OBJECT_OPERATOR property_name          { $$ = Expr\PropertyFetch[$1, $3]; }
     | new_variable T_NULLSAFE_OBJECT_OPERATOR property_name { $$ = Expr\NullsafePropertyFetch[$1, $3]; }
     | class_name T_PAAMAYIM_NEKUDOTAYIM static_member_prop_name
@@ -1422,5 +1378,7 @@ encaps_var_offset:
     | '-' T_NUM_STRING                                      { $$ = $this->parseNumString('-' . $2, attributes()); }
     | plain_variable
 ;
+
+@include-point
 
 %%

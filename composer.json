@@ -29,7 +29,8 @@
     },
     "autoload": {
         "psr-4": {
-            "PhpParser\\": "lib/PhpParser"
+            "PhpParser\\": "lib/PhpParser",
+            "PxpParser\\": "lib/PxpParser"
         }
     },
     "autoload-dev": {

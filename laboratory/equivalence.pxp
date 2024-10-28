@@ -1,0 +1,16 @@
+Tag::div();
+<div />
+
+Tag::div()->style("color:$color");
+<div style="color:$color" />
+
+Tag::div($order->billing_name())->color('blue')
+<div color('blue')>
+  $order->billing_name();
+</div>
+<div color='blue'>
+  $order->billing_name();
+</div>
+
+Tag::text()->name('bill_id')->htmx('get',"?action=settle_payment&pairing_id=$pairing->pairing_id") . Tag::saving()
+<text name='bill_id' hx-get="?action=settle_payment&pairing_id=$pairing->pairing_id"/><saving/>

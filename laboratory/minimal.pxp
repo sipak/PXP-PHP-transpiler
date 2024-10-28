@@ -1,0 +1,4 @@
+nikic-parser
+/grammar
+rebuildParsers.php ... generate parsers according to grammar file
+[php].y ... grammar files

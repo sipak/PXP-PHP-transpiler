@@ -26,7 +26,7 @@ if (empty($files)) {
     showHelp("Must specify at least one file.");
 }
 
-$parser = (new PhpParser\PxpParserFactory())->create();
+$parser = (new PxpParser\ParserFactory())->create();
 $dumper = new PhpParser\NodeDumper([
     'dumpComments' => true,
     'dumpPositions' => $attributes['with-positions'],
@@ -50,6 +50,8 @@ foreach ($files as $file) {
         }
 
         $code = file_get_contents($file);
+        $code = "<?php\n\n" . $code;
+        // print_r($code);
         fwrite(STDERR, "====> File $file:\n");
     }
 
@@ -69,7 +71,7 @@ foreach ($files as $file) {
         } catch (PhpParser\Error $error) {
             $message = formatErrorMessage($error, $code, $attributes['with-column-info']);
             fwrite(STDERR, $message . "\n");
-            exit(1);
+            // exit(1);
         }
     }
 
@@ -89,6 +91,14 @@ foreach ($files as $file) {
         } elseif ('resolve-names' === $operation) {
             fwrite(STDERR, "==> Resolved names.\n");
             $stmts = $traverser->traverse($stmts);
+        } elseif ('token-dump' === $operation) {
+            fwrite(STDERR, "==> Tokens.\n");
+            foreach ( $parser->getTokens() as $token ) {
+              $name = $token->getTokenName() ?? TX_TOKENS[$token->id];
+              $text = (string) $token;
+              $nl = str_contains($text, "\n");
+              echo "$name " . ($name === $text ? '' : $text . ($nl ? '' : ' '))  ;
+            }
         }
     }
 }
@@ -153,6 +163,9 @@ function parseArgs($args) {
         }
 
         switch ($arg) {
+            case '-t':
+                $operations[] = 'token-dump';
+                break;
             case '--dump':
             case '-d':
                 $operations[] = 'dump';

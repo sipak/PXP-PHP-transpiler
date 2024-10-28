@@ -1,0 +1,15 @@
+// style 1
+<div>"The title of the book is " . $book_title</div>;
+<div>"The title of the book is $book_title"</div>
+<ul>
+  <li>$items</li>
+</ul>
+
+// style 2
+<div>The title of the book is $book_title</div>;
+<div>"The title of the book is $book_title"</div>
+<ul>
+  <li>$items</li>
+</ul>
+
+<div>{pxp_expression}</div>;

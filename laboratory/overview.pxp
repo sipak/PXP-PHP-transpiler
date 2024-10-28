@@ -1,0 +1,153 @@
+// different match styles... note particular placement of compute($args)
+// classic
+$transformation = match (compute($args)) {
+  '1' => ...,
+  '2' => ...,
+};
+// piped
+$transformation = compute($args)
+|> match {
+  '1' => ...,
+  '2' => ...,
+};
+// short-lambded
+$transformation = match $$ {
+  '1' => ...,
+  '2' => ...,
+}(compute($args));
+// using array
+$transformation = [
+  '1' => ...,
+  '2' => ...,
+][compute($args)];
+// inversed
+$transformation = {
+  '1' => ...,
+  '2' => ...,
+} match compute($args);
+
+
+// pipe operators |> and |., <|,  .|
+$value |> first |> second |> third // third(second(first($value)))
+
+sum(filter([1, 2, 3, 4, 5], $$ % 2 == 0))
+[1, 2, 3, 4, 5].filter($$ % 2 == 0).sum()
+
+sum([1, 2, 3, 4, 5].filter($$ % 2 == 0))
+[1, 2, 3, 4, 5].filter($$ % 2 == 0) |> sum .check()
+
+sum()..filter($$ % 2 == 0)..[1, 2, 3, 4, 5]
+
+[1, 2, 3, 4, 5] |> filter($$ % 2 == 0) |> sum
+sum <| filter($$ % 2 == 0) <| [1, 2, 3, 4, 5]
+
+// "with" clause
+with $any_object {
+  self::$on = $$.property_a + $$.property_b;
+}
+with $first_object $second_object {
+  self::$on = $1.property + $2.property;
+}
+
+// implicit with
+$any_object. : // unfinished member access
+  self::$on = $$.property_a + $$.property_b;
+// implicit with
+$first_object. $second_object. : // unfinished member access
+  self::$on = $1.property_a + $2.property_b;
+
+// postfix notation inspired by Factor
+2 3 + 4 * . // (2 + 3) * 4
+
+// bi combinator (Factor)
+[foo][bar]bi // [foo($$), bar($$)] = fn($v) => [foo($var), $bar($var)]
+
+// conditional return
+return $value if $condition;
+
+// short closure inspired by Elixir
+"$1abc" // fn($x) => $x . "abc"
+- fn => $1+$2*3
+- map $1.items.count to orders
+- for orders do echo $1.billing_email
+- for orders do echo .billing_email;
+- for orders collect $.billing_email
+- orders.map(.get_billing_email())
+- orders.for(echo )
+
+// prefix compose
+$var =. 'pre-'; // $var = 'pre-' . $var
+
+// short lambda / closure, inspired by Elixir
+// $$ or {$} ... the only argument
+$$ // fn($arg) => $arg; identity
+round($$) // fn($arg) => round($arg); identity
+// $1 or {1} ... $9 or {9} ... {999}, possitional arguments
+$1 // fn($a) => $a;
+- fn => $1+$2*3
+- map $1.items.count to orders
+- for orders do echo $1.billing_email
+- for orders do echo .billing_email;
+- for orders collect $.billing_email
+- orders.map(.get_billing_email())
+- orders.for(echo )
+
+// templating short lamda
+"<div>$$</div>" // fn($arg) => "<div>$$</div>" ~ Tag::div($$);
+"{$}abc" // fn($x) => $x . "abc"
+
+
+
+// pipe operator
+$expr |> $inner |> $outer; // $outer($inner($expr))
+$expr |> "pre-$1-post"; // 'pre-' . $var . '-post'
+
+// functional equal-compose === apply variable to function & assing the result to the variable
+// i.e. pipe assing operator, making sense when having also pipe operator |>
+// !!! collision with bitwise assingnemt operator
+$var |= $callable; // $var = $callable($var);
+$var |= "pre-$1-post"; // $var = 'pre-' . $var . '-post'
+$var |= 1+$1; // $var += 1
+$var |= 2^$$; // $var = 2^$var
+// alernative syntax
+$var ()= $callable;
+$var &= $callable;
+$var $= $callable;
+$var := $callable;
+
+// tracking and purity checking
+pure function function_without_sideeffects() {
+  return 1 + 1;
+}
+
+// access array keys that might not exists without warnings
+// equivalent to $query['pagename'] ?? null
+$query?['pagename']
+$query['pagename']
+$query[?'pagename']
+$query??['pagename']
+
+// access arrays using dot-path notation
+// $array::[string $path]
+// $array:[<string path>]
+// $array.[string $path]
+$templates::['orders.items'];
+$templates:[orders.items];
+$templates[[orders.items]];
+$templates[.order.items];
+$templates.[orders.items];
+$templates.[orders].[1.2].[items];
+
+// generators
+$items.[*.price] { array_column($items, 'price'}
+$templates.[items.*.price] { $templates['items'][.*.price] }
+
+$key = 'orders';
+$subkey = 'items';
+$templates::[$key.$subkey];
+
+$templates:[orders.$subkey];
+$templates:[orders.{subkey}];
+
+// replace value and return original one // pong($variable, $replacement)
+$value = $variable pong $replacement
